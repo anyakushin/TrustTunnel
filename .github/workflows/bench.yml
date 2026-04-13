@@ -1,0 +1,202 @@
+name: Benchmark
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Endpoint branch/ref to benchmark"
+        required: false
+        default: ""
+      client_repo:
+        description: "Client repo (owner/name), leave empty to skip client build"
+        required: false
+        default: ""
+      client_ref:
+        description: "Client branch/ref"
+        required: false
+        default: "master"
+      pr_number:
+        description: "PR number for posting results comment"
+        required: false
+        default: ""
+      tunnel_type:
+        description: "Tunnel type to benchmark"
+        required: false
+        default: "ag"
+        type: choice
+        options:
+          - ag
+
+  issue_comment:
+    types: [created]
+
+  repository_dispatch:
+    types: [client-bench]
+
+concurrency:
+  group: bench
+  cancel-in-progress: false
+
+jobs:
+  bench:
+    name: Run Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'repository_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request &&
+        contains(github.event.comment.body, '/bench') &&
+        contains(fromJson('["COLLABORATOR","MEMBER","OWNER"]'), github.event.comment.author_association)
+      )
+
+    steps:
+      - name: Resolve inputs
+        id: inputs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let ref = '', clientRepo = '', clientRef = '', prNumber = '', tunnelType = 'ag';
+
+            if (context.eventName === 'workflow_dispatch') {
+              ref = '${{ github.event.inputs.ref }}' || context.ref;
+              clientRepo = '${{ github.event.inputs.client_repo }}';
+              clientRef = '${{ github.event.inputs.client_ref }}' || 'master';
+              prNumber = '${{ github.event.inputs.pr_number }}';
+              tunnelType = '${{ github.event.inputs.tunnel_type }}' || 'ag';
+            } else if (context.eventName === 'repository_dispatch') {
+              const p = context.payload.client_payload || {};
+              ref = context.ref;
+              clientRepo = p.client_repo || '';
+              clientRef = p.client_ref || 'master';
+              prNumber = String(p.pr_number || '');
+              tunnelType = 'ag';
+            } else if (context.eventName === 'issue_comment') {
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+              });
+              ref = pr.data.head.ref;
+              prNumber = String(context.issue.number);
+              tunnelType = 'ag';
+            }
+
+            core.setOutput('ref', ref);
+            core.setOutput('client_repo', clientRepo);
+            core.setOutput('client_ref', clientRef);
+            core.setOutput('pr_number', prNumber);
+            core.setOutput('tunnel_type', tunnelType);
+
+      - name: Checkout endpoint
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.inputs.outputs.ref }}
+
+      - name: Checkout client
+        if: steps.inputs.outputs.client_repo != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.inputs.outputs.client_repo }}
+          ref: ${{ steps.inputs.outputs.client_ref }}
+          path: bench/local-side/trusttunnel/trusttunnel-client
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build bench images
+        run: |
+          cd bench
+          ./single_host.sh build
+
+      - name: Run benchmarks
+        run: |
+          cd bench
+          ./single_host.sh run --tunnel_type=${{ steps.inputs.outputs.tunnel_type }}
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench/results/
+          if-no-files-found: ignore
+
+      - name: Post PR comment
+        if: steps.inputs.outputs.pr_number != ''
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.event_name == 'repository_dispatch' && secrets.CLIENT_COMMENT_TOKEN || secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const resultsDir = 'bench/results/ag';
+            let body = '## Benchmark Results\n\n';
+
+            function readResults(dir, prefix) {
+              let table = '';
+              if (!fs.existsSync(dir)) return table;
+              const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+              if (files.length === 0) return table;
+
+              table += `### ${prefix}\n\n`;
+              table += '| Test | Avg Speed (MB/s) | Jobs | Failed |\n';
+              table += '| --- | --- | --- | --- |\n';
+              for (const file of files.sort()) {
+                try {
+                  const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+                  const name = file.replace('.json', '');
+                  table += `| ${name} | ${data.avg_speed_MBps || 'N/A'} | ${data.jobs_num || 'N/A'} | ${data.failed_num || 0} |\n`;
+                } catch (e) {
+                  table += `| ${file} | error reading | - | - |\n`;
+                }
+              }
+              table += '\n';
+              return table;
+            }
+
+            if (fs.existsSync(resultsDir)) {
+              const subdirs = fs.readdirSync(resultsDir, { withFileTypes: true });
+              for (const sub of subdirs) {
+                if (sub.isDirectory()) {
+                  body += readResults(path.join(resultsDir, sub.name), sub.name);
+                }
+              }
+              body += readResults(resultsDir, 'ag');
+            } else {
+              body += 'No results found.\n';
+            }
+
+            const prNumber = parseInt('${{ steps.inputs.outputs.pr_number }}');
+
+            // For cross-repo dispatches, the pr_repo payload field identifies
+            // the main repo where the PR lives (not the fork used for checkout).
+            let owner = context.repo.owner;
+            let repo = context.repo.repo;
+            if (context.eventName === 'repository_dispatch') {
+              const prRepo = (context.payload.client_payload || {}).pr_repo || '';
+              const parts = prRepo.split('/');
+              if (parts.length === 2) {
+                owner = parts[0];
+                repo = parts[1];
+              }
+            }
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: prNumber,
+              body,
+            });

@@ -1,22 +1,20 @@
 # syntax=docker/dockerfile:1
 FROM bench-common
 
-ARG ENDPOINT_DIR="TrustTunnel"
 ARG ENDPOINT_HOSTNAME="endpoint.bench"
 ARG CONFIG_FILE="vpn.conf"
 ARG TLS_HOSTS_SETTINGS_FILE="tls_hosts.conf"
 ARG LOG_LEVEL="info"
 
-COPY $ENDPOINT_DIR/lib/Cargo.toml /tmp/Cargo.toml
+WORKDIR /bench/endpoint
 
-COPY $ENDPOINT_DIR /bench/$ENDPOINT_DIR
+COPY . .
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/bench/endpoint/target \
+    cargo build --release --bin setup_wizard --bin trusttunnel_endpoint && \
+    cp ./target/release/setup_wizard ./target/release/trusttunnel_endpoint /bench/
 
-WORKDIR /bench/
-RUN cd "$ENDPOINT_DIR" && \
-    cargo build --release --bin setup_wizard && \
-    cargo build --release --bin trusttunnel_endpoint && \
-    mv ./target/release/setup_wizard ./target/release/trusttunnel_endpoint /bench/
-
+WORKDIR /bench
 RUN ./setup_wizard --mode non-interactive  \
     --address [::]:4433 \
     --creds premium:premium  \

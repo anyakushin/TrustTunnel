@@ -22,7 +22,9 @@ WORKDIR /bench/$CLIENT_DIR/build
 RUN pipreqs . && \
     pip install -r ../scripts/requirements.txt && \
     ../scripts/bootstrap_conan_deps.py
-RUN cmake .. -DCMAKE_BUILD_TYPE=Release -G "Ninja" \
+RUN --mount=type=cache,target=/root/.conan2 \
+    --mount=type=cache,target=/root/.cargo/registry \
+    cmake .. -DCMAKE_BUILD_TYPE=Release -G "Ninja" \
         -DCMAKE_C_COMPILER="clang" \
         -DCMAKE_CXX_COMPILER="clang++" \
         -DCMAKE_CXX_FLAGS="-stdlib=libc++"
@@ -34,7 +36,7 @@ WORKDIR /bench/$CLIENT_DIR
 RUN patch -p1 < /bench/ssl_verify.patch && \
     cd build && \
     ninja trusttunnel_client && \
-    mv ./trusttunnel/trusttunnel_client /bench/
+    cp ./trusttunnel/trusttunnel_client /bench/
 
 COPY entrypoint.sh /bench/
 

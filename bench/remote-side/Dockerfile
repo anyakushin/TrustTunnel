@@ -51,9 +51,11 @@ http {\n\
   }\n\
 }" >>$CONFIG_FILE
 
+RUN mkdir -p $DOWNLOAD_DIR && \
+    dd bs=$((1024 * 1024)) count=1024 if=/dev/urandom of=$DOWNLOAD_DIR/1GiB.dat && \
+    dd bs=1024 count=128 if=/dev/urandom of=$DOWNLOAD_DIR/100KiB.dat
+
 ADD entrypoint.sh /bench/$SERVER_BASE_DIR
 
-ENV CONFIG=$CONFIG_FILE \
-    DOWNLOAD_DIR=$DOWNLOAD_DIR \
-    UPLOAD_DIR=$UPLOAD_DIR
-ENTRYPOINT ./entrypoint.sh "$CONFIG" "$DOWNLOAD_DIR" "$UPLOAD_DIR"
+ENV CONFIG=$CONFIG_FILE
+ENTRYPOINT ./entrypoint.sh "$CONFIG"
