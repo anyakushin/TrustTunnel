@@ -19,7 +19,8 @@ ENV PATH="/usr/lib/llvm-$LLVM_MAJOR_VER/bin:/usr/local/go/bin:$PATH"
 
 COPY $CLIENT_DIR /bench/$CLIENT_DIR
 WORKDIR /bench/$CLIENT_DIR/build
-RUN pipreqs . && \
+RUN --mount=type=cache,target=/root/.conan2 \
+    pipreqs . && \
     pip install -r ../scripts/requirements.txt && \
     ../scripts/bootstrap_conan_deps.py
 RUN --mount=type=cache,target=/root/.conan2 \
