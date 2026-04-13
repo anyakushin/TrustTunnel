@@ -9,7 +9,6 @@ Usage: single_host.sh COMMAND
 Commands
     Build and prepare images for running
         build [--client=<trusttunnel_client_repo_url>]
-              [--endpoint=<trusttunnel_endpoint_repo_url>]
 
     Clean build artifacts
         clean [all]
@@ -43,16 +42,11 @@ build_remote() {
 }
 
 build_middle_ag_rust() {
-  local endpoint_url="$1"
-
-  if [ ! -d "$SELF_DIR_PATH/middle-box/trusttunnel-rust/$ENDPOINT_DIR" ]; then
-    git clone "$endpoint_url" "$SELF_DIR_PATH/middle-box/trusttunnel-rust/$ENDPOINT_DIR"
-  fi
-
   docker build \
-    --build-arg ENDPOINT_DIR="$ENDPOINT_DIR" \
     --build-arg ENDPOINT_HOSTNAME="$ENDPOINT_HOSTNAME" \
-    -t "$MIDDLE_AG_RUST_IMAGE" "$SELF_DIR_PATH/middle-box/trusttunnel-rust"
+    -t "$MIDDLE_AG_RUST_IMAGE" \
+    -f "$SELF_DIR_PATH/middle-box/trusttunnel-rust/Dockerfile" \
+    "$SELF_DIR_PATH/.."
 }
 
 build_middle_wg() {
@@ -81,13 +75,10 @@ build_local() {
 
 build() {
   local trusttunnel_client_url
-  local trusttunnel_endpoint_url
 
   for arg in "$@"; do
     if [[ "$arg" == --client=* ]]; then
       trusttunnel_client_url=${arg#--client=}
-    elif [[ "$arg" == --endpoint=* ]]; then
-      trusttunnel_endpoint_url=${arg#--endpoint=}
     else
       echo "$HELP_MSG"
       exit 1
@@ -97,9 +88,7 @@ build() {
   docker build -t "$COMMON_IMAGE" "$SELF_DIR_PATH"
 
   build_local "$trusttunnel_client_url"
-  if [ -n "$trusttunnel_endpoint_url" ]; then
-    build_middle_ag_rust "$trusttunnel_endpoint_url"
-  fi
+  build_middle_ag_rust
   build_middle_wg
   build_remote
 }
@@ -125,7 +114,6 @@ clean_middle_ag_rust() {
   docker rm -f $(docker ps -aq -f ancestor="$MIDDLE_AG_RUST_IMAGE")
 
   if [[ "$everything" == "all" ]]; then
-    rm -rf "${SELF_DIR_PATH:?}/middle-box/trusttunnel-rust/$ENDPOINT_DIR"
     docker rmi -f "$MIDDLE_AG_RUST_IMAGE"
   fi
 }
