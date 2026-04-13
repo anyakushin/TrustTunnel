@@ -34,6 +34,7 @@ NETWORK_NAME="bench-network"
 ENDPOINT_HOSTNAME="endpoint.bench"
 RESULTS_DIR="results"
 REMOTE_HOSTNAME="server.bench"
+DEFAULT_CLIENT_URL="https://github.com/TrustTunnel/TrustTunnelClient.git"
 
 build_remote() {
   docker build \
@@ -55,19 +56,17 @@ build_middle_wg() {
 }
 
 build_local() {
-  local trusttunnel_client_url="$1"
+  local trusttunnel_client_url="${1:-$DEFAULT_CLIENT_URL}"
 
   docker build -t "$LOCAL_IMAGE" "$SELF_DIR_PATH/local-side"
 
-  if [ -n "$trusttunnel_client_url" ]; then
-    if [ ! -d "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR" ]; then
-      git clone "$trusttunnel_client_url" "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR"
-    fi
-
-    docker build \
-      --build-arg CLIENT_DIR="$CLIENT_DIR" \
-      -t "$LOCAL_AG_IMAGE" "$SELF_DIR_PATH/local-side/trusttunnel"
+  if [ ! -d "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR" ]; then
+    git clone "$trusttunnel_client_url" "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR"
   fi
+
+  docker build \
+    --build-arg CLIENT_DIR="$CLIENT_DIR" \
+    -t "$LOCAL_AG_IMAGE" "$SELF_DIR_PATH/local-side/trusttunnel"
 
   docker build \
     -t "$LOCAL_WG_IMAGE" "$SELF_DIR_PATH/local-side/wireguard"
