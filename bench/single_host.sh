@@ -95,9 +95,9 @@ build() {
 clean_local() {
   local everything="$1"
 
-  docker rm -f $(docker ps -aq -f ancestor="$LOCAL_AG_IMAGE")
-  docker rm -f $(docker ps -aq -f ancestor="$LOCAL_WG_IMAGE")
-  docker rm -f $(docker ps -aq -f ancestor="$LOCAL_IMAGE")
+  docker ps -aq -f ancestor="$LOCAL_AG_IMAGE" | xargs -r docker rm -f
+  docker ps -aq -f ancestor="$LOCAL_WG_IMAGE" | xargs -r docker rm -f
+  docker ps -aq -f ancestor="$LOCAL_IMAGE" | xargs -r docker rm -f
 
   if [[ "$everything" == "all" ]]; then
     rm -rf "${SELF_DIR_PATH:?}/local-side/trusttunnel/$CLIENT_DIR"
@@ -110,7 +110,7 @@ clean_local() {
 clean_middle_ag_rust() {
   local everything="$1"
 
-  docker rm -f $(docker ps -aq -f ancestor="$MIDDLE_AG_RUST_IMAGE")
+  docker ps -aq -f ancestor="$MIDDLE_AG_RUST_IMAGE" | xargs -r docker rm -f
 
   if [[ "$everything" == "all" ]]; then
     docker rmi -f "$MIDDLE_AG_RUST_IMAGE"
@@ -120,7 +120,7 @@ clean_middle_ag_rust() {
 clean_middle_wg() {
   local everything="$1"
 
-  docker rm -f $(docker ps -aq -f ancestor="$MIDDLE_WG_IMAGE")
+  docker ps -aq -f ancestor="$MIDDLE_WG_IMAGE" | xargs -r docker rm -f
   if [[ "$everything" == "all" ]]; then
     docker rmi -f "$MIDDLE_WG_IMAGE"
   fi
@@ -138,7 +138,7 @@ clean() {
   clean_middle_ag_rust "$everything"
   clean_middle_wg "$everything"
 
-  docker rm -f $(docker ps -aq -f ancestor="$REMOTE_IMAGE")
+  docker ps -aq -f ancestor="$REMOTE_IMAGE" | xargs -r docker rm -f
 
   if [[ "$everything" == "all" ]]; then
     docker rmi -f "$REMOTE_IMAGE"
@@ -235,15 +235,12 @@ run() {
 cmd="$1"
 shift
 if [[ "$cmd" == "build" ]]; then
-  trap clean EXIT INT TERM
   build "$@"
-  trap - EXIT INT TERM
 elif [[ "$cmd" == "clean" ]]; then
   clean "$@"
 elif [[ "$cmd" == "run" ]]; then
   trap clean EXIT INT TERM
   run "$@"
-  trap - EXIT INT TERM
 else
   echo "$HELP_MSG"
   exit 1
