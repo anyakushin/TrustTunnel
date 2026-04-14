@@ -119,6 +119,8 @@ jobs:
         run: |
           cd bench
           ./single_host.sh build
+        env:
+          CACHE_REPO: ghcr.io/${{ github.repository }}/bench-cache
 
       - name: Run benchmarks
         run: |

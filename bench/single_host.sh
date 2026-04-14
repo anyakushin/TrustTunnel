@@ -21,6 +21,24 @@ Commands
 "
 
 SELF_DIR_PATH=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+
+# When CACHE_REPO is set (e.g. ghcr.io/owner/repo/bench-cache), use buildx
+# with registry-backed layer cache. Otherwise fall back to plain docker build.
+docker_build() {
+  local tag="$1"
+  shift
+
+  if [ -n "${CACHE_REPO:-}" ]; then
+    local cache_ref="$CACHE_REPO/$tag:latest"
+    docker buildx build --load \
+      --cache-from "type=registry,ref=$cache_ref" \
+      --cache-to "type=registry,ref=$cache_ref,mode=max" \
+      -t "$tag" "$@"
+  else
+    docker build -t "$tag" "$@"
+  fi
+}
+
 COMMON_IMAGE="bench-common"
 REMOTE_IMAGE="bench-rs"
 MIDDLE_AG_RUST_IMAGE="bench-mb-agrs"
@@ -37,39 +55,36 @@ REMOTE_HOSTNAME="server.bench"
 DEFAULT_CLIENT_URL="https://github.com/TrustTunnel/TrustTunnelClient.git"
 
 build_remote() {
-  docker build \
+  docker_build "$REMOTE_IMAGE" \
     --build-arg HOSTNAME="$REMOTE_HOSTNAME" \
-    -t "$REMOTE_IMAGE" "$SELF_DIR_PATH/remote-side"
+    "$SELF_DIR_PATH/remote-side"
 }
 
 build_middle_ag_rust() {
-  docker build \
+  docker_build "$MIDDLE_AG_RUST_IMAGE" \
     --build-arg ENDPOINT_HOSTNAME="$ENDPOINT_HOSTNAME" \
-    -t "$MIDDLE_AG_RUST_IMAGE" \
     -f "$SELF_DIR_PATH/middle-box/trusttunnel-rust/Dockerfile" \
     "$SELF_DIR_PATH/.."
 }
 
 build_middle_wg() {
-  docker build \
-    -t "$MIDDLE_WG_IMAGE" "$SELF_DIR_PATH/middle-box/wireguard"
+  docker_build "$MIDDLE_WG_IMAGE" "$SELF_DIR_PATH/middle-box/wireguard"
 }
 
 build_local() {
   local trusttunnel_client_url="${1:-$DEFAULT_CLIENT_URL}"
 
-  docker build -t "$LOCAL_IMAGE" "$SELF_DIR_PATH/local-side"
+  docker_build "$LOCAL_IMAGE" "$SELF_DIR_PATH/local-side"
 
   if [ ! -d "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR" ]; then
     git clone "$trusttunnel_client_url" "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR"
   fi
 
-  docker build \
+  docker_build "$LOCAL_AG_IMAGE" \
     --build-arg CLIENT_DIR="$CLIENT_DIR" \
-    -t "$LOCAL_AG_IMAGE" "$SELF_DIR_PATH/local-side/trusttunnel"
+    "$SELF_DIR_PATH/local-side/trusttunnel"
 
-  docker build \
-    -t "$LOCAL_WG_IMAGE" "$SELF_DIR_PATH/local-side/wireguard"
+  docker_build "$LOCAL_WG_IMAGE" "$SELF_DIR_PATH/local-side/wireguard"
 }
 
 build() {
@@ -84,7 +99,7 @@ build() {
     fi
   done
 
-  docker build -t "$COMMON_IMAGE" "$SELF_DIR_PATH"
+  docker_build "$COMMON_IMAGE" "$SELF_DIR_PATH"
 
   build_local "$trusttunnel_client_url"
   build_middle_ag_rust
