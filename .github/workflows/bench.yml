@@ -175,7 +175,6 @@ jobs:
                   body += readResults(path.join(resultsDir, sub.name), sub.name);
                 }
               }
-              body += readResults(resultsDir, 'ag');
             } else {
               body += 'No results found.\n';
             }
