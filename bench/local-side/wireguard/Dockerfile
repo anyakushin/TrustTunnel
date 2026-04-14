@@ -3,7 +3,7 @@ FROM bench-ls
 
 ARG WG_QUICK_URL="https://raw.githubusercontent.com/WireGuard/wireguard-tools/71799a8f6d1450b63071a21cad6ed434b348d3d5/src/wg-quick/linux.bash"
 
-RUN apt install -y iptables wireguard
+RUN apt update -y && apt install -y iptables wireguard
 
 ADD entrypoint.sh \
     wg-quick.patch \
