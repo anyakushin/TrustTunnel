@@ -121,9 +121,8 @@ jobs:
       - name: Build bench images
         run: |
           cd bench
+          export CACHE_REPO="ghcr.io/${GITHUB_REPOSITORY,,}/bench-cache"
           ./single_host.sh build
-        env:
-          CACHE_REPO: ghcr.io/${{ github.repository }}/bench-cache
 
       - name: Run benchmarks
         run: |
