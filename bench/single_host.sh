@@ -22,23 +22,6 @@ Commands
 
 SELF_DIR_PATH=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
-# When CACHE_REPO is set (e.g. ghcr.io/owner/repo/bench-cache), use buildx
-# with registry-backed layer cache. Otherwise fall back to plain docker build.
-docker_build() {
-  local tag="$1"
-  shift
-
-  if [ -n "${CACHE_REPO:-}" ]; then
-    local cache_ref="$CACHE_REPO/$tag:latest"
-    docker buildx build --load \
-      --cache-from "type=registry,ref=$cache_ref" \
-      --cache-to "type=registry,ref=$cache_ref,mode=max" \
-      -t "$tag" "$@"
-  else
-    docker build -t "$tag" "$@"
-  fi
-}
-
 COMMON_IMAGE="bench-common"
 REMOTE_IMAGE="bench-rs"
 MIDDLE_AG_RUST_IMAGE="bench-mb-agrs"
@@ -54,39 +37,6 @@ RESULTS_DIR="results"
 REMOTE_HOSTNAME="server.bench"
 DEFAULT_CLIENT_URL="https://github.com/TrustTunnel/TrustTunnelClient.git"
 
-build_remote() {
-  docker_build "$REMOTE_IMAGE" \
-    --build-arg HOSTNAME="$REMOTE_HOSTNAME" \
-    "$SELF_DIR_PATH/remote-side"
-}
-
-build_middle_ag_rust() {
-  docker_build "$MIDDLE_AG_RUST_IMAGE" \
-    --build-arg ENDPOINT_HOSTNAME="$ENDPOINT_HOSTNAME" \
-    -f "$SELF_DIR_PATH/middle-box/trusttunnel-rust/Dockerfile" \
-    "$SELF_DIR_PATH/.."
-}
-
-build_middle_wg() {
-  docker_build "$MIDDLE_WG_IMAGE" "$SELF_DIR_PATH/middle-box/wireguard"
-}
-
-build_local() {
-  local trusttunnel_client_url="${1:-$DEFAULT_CLIENT_URL}"
-
-  docker_build "$LOCAL_IMAGE" "$SELF_DIR_PATH/local-side"
-
-  if [ ! -d "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR" ]; then
-    git clone "$trusttunnel_client_url" "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR"
-  fi
-
-  docker_build "$LOCAL_AG_IMAGE" \
-    --build-arg CLIENT_DIR="$CLIENT_DIR" \
-    "$SELF_DIR_PATH/local-side/trusttunnel"
-
-  docker_build "$LOCAL_WG_IMAGE" "$SELF_DIR_PATH/local-side/wireguard"
-}
-
 build() {
   local trusttunnel_client_url
 
@@ -99,12 +49,11 @@ build() {
     fi
   done
 
-  docker_build "$COMMON_IMAGE" "$SELF_DIR_PATH"
+  if [ ! -d "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR" ]; then
+    git clone "${trusttunnel_client_url:-$DEFAULT_CLIENT_URL}" "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR"
+  fi
 
-  build_local "$trusttunnel_client_url"
-  build_middle_ag_rust
-  build_middle_wg
-  build_remote
+  docker buildx bake --load -f "$SELF_DIR_PATH/docker-bake.hcl"
 }
 
 clean_local() {
