@@ -158,7 +158,8 @@ jobs:
                 try {
                   const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
                   const name = file.replace('.json', '');
-                  table += `| ${name} | ${data.avg_speed_MBps || 'N/A'} | ${data.jobs_num || 'N/A'} | ${data.failed_num || 0} |\n`;
+                  const result = data.http_download || data.http_upload || {};
+                  table += `| ${name} | ${result.avg_speed_MBps || 'N/A'} | ${result.jobs_num || 'N/A'} | ${result.failed_num || 0} |\n`;
                 } catch (e) {
                   table += `| ${file} | error reading | - | - |\n`;
                 }

@@ -4,7 +4,7 @@ HELP_MSG="
 Usage:  bench.sh <type=no-vpn|wg|ag> <network> <remote_ip> <results_dir_path> [<endpoint_ip> <endpoint_hostname>]
 "
 
-set -e -x
+set -e
 set -o pipefail
 
 LOCAL_IMAGE="bench-ls"
@@ -203,7 +203,7 @@ run_through_ag() {
       $endpoint_hostname $endpoint_ip $protocol socks 1080 1179"
     echo "Running small files download test..."
     local container
-    container=$(start_container "$set_up_cmd" 10)
+    container=$(start_container "$set_up_test_suite_cmd" 10)
     run_test "$container" \
       --output "$CONTAINER_RESULTS_DIR_PATH/sf-dl.json" \
       --jobs 10 \

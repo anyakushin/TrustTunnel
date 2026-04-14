@@ -19,7 +19,8 @@ ENV PATH="/usr/lib/llvm-$LLVM_MAJOR_VER/bin:/usr/local/go/bin:$PATH"
 
 COPY $CLIENT_DIR /bench/$CLIENT_DIR
 WORKDIR /bench/$CLIENT_DIR/build
-RUN pipreqs . && \
+RUN --mount=type=cache,target=/root/.conan2 \
+    pipreqs . && \
     pip install -r ../scripts/requirements.txt && \
     ../scripts/bootstrap_conan_deps.py
 RUN --mount=type=cache,target=/root/.conan2 \
@@ -33,7 +34,8 @@ RUN --mount=type=cache,target=/root/.conan2 \
 COPY ssl_verify.patch /bench/
 
 WORKDIR /bench/$CLIENT_DIR
-RUN patch -p1 < /bench/ssl_verify.patch && \
+RUN --mount=type=cache,target=/root/.conan2 \
+    patch -p1 < /bench/ssl_verify.patch && \
     cd build && \
     ninja trusttunnel_client && \
     cp ./trusttunnel/trusttunnel_client /bench/
