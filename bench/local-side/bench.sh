@@ -4,7 +4,7 @@ HELP_MSG="
 Usage:  bench.sh <type=no-vpn|wg|ag> <network> <remote_ip> <results_dir_path> [<endpoint_ip> <endpoint_hostname>]
 "
 
-set -e -x
+set -e
 set -o pipefail
 
 LOCAL_IMAGE="bench-ls"
