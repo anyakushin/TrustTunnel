@@ -3,10 +3,6 @@ name: Benchmark
 on:
   workflow_dispatch:
     inputs:
-      ref:
-        description: "Endpoint branch/ref to benchmark"
-        required: false
-        default: ""
       client_repo:
         description: "Client repo (owner/name), leave empty to skip client build"
         required: false
@@ -64,7 +60,7 @@ jobs:
             let ref = '', clientRepo = '', clientRef = '', prNumber = '', tunnelType = 'ag';
 
             if (context.eventName === 'workflow_dispatch') {
-              ref = '${{ github.event.inputs.ref }}' || context.ref;
+              ref = context.ref;
               clientRepo = '${{ github.event.inputs.client_repo }}';
               clientRef = '${{ github.event.inputs.client_ref }}' || 'master';
               prNumber = '${{ github.event.inputs.pr_number }}';
