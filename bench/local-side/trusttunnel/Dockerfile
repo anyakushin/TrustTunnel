@@ -34,7 +34,8 @@ RUN --mount=type=cache,target=/root/.conan2 \
 COPY ssl_verify.patch /bench/
 
 WORKDIR /bench/$CLIENT_DIR
-RUN patch -p1 < /bench/ssl_verify.patch && \
+RUN --mount=type=cache,target=/root/.conan2 \
+    patch -p1 < /bench/ssl_verify.patch && \
     cd build && \
     ninja trusttunnel_client && \
     cp ./trusttunnel/trusttunnel_client /bench/
