@@ -119,6 +119,8 @@ jobs:
         run: |
           cd bench
           ./single_host.sh build
+        env:
+          CACHE_REPO: ghcr.io/${{ github.repository }}/bench-cache
 
       - name: Run benchmarks
         run: |
@@ -159,7 +161,8 @@ jobs:
                   const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
                   const name = file.replace('.json', '');
                   const result = data.http_download || data.http_upload || {};
-                  table += `| ${name} | ${result.avg_speed_MBps || 'N/A'} | ${result.jobs_num || 'N/A'} | ${result.failed_num || 0} |\n`;
+                  const speed = typeof result.avg_speed_MBps === 'number' ? result.avg_speed_MBps.toFixed(4) : 'N/A';
+                  table += `| ${name} | ${speed} | ${result.jobs_num || 'N/A'} | ${result.failed_num || 0} |\n`;
                 } catch (e) {
                   table += `| ${file} | error reading | - | - |\n`;
                 }
@@ -175,7 +178,6 @@ jobs:
                   body += readResults(path.join(resultsDir, sub.name), sub.name);
                 }
               }
-              body += readResults(resultsDir, 'ag');
             } else {
               body += 'No results found.\n';
             }
