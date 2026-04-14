@@ -159,7 +159,8 @@ jobs:
                   const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
                   const name = file.replace('.json', '');
                   const result = data.http_download || data.http_upload || {};
-                  table += `| ${name} | ${result.avg_speed_MBps || 'N/A'} | ${result.jobs_num || 'N/A'} | ${result.failed_num || 0} |\n`;
+                  const speed = typeof result.avg_speed_MBps === 'number' ? result.avg_speed_MBps.toFixed(4) : 'N/A';
+                  table += `| ${name} | ${speed} | ${result.jobs_num || 'N/A'} | ${result.failed_num || 0} |\n`;
                 } catch (e) {
                   table += `| ${file} | error reading | - | - |\n`;
                 }
