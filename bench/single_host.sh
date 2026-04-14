@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e -x
+set -e
 set -o pipefail
 
 HELP_MSG="
