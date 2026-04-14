@@ -26,6 +26,9 @@ on:
         type: choice
         options:
           - ag
+          - all
+          - wg
+          - no-vpn
 
   issue_comment:
     types: [created]
