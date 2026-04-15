@@ -73,13 +73,13 @@ jobs:
               prNumber = String(p.pr_number || '');
               tunnelType = 'ag';
             } else if (context.eventName === 'issue_comment') {
+              prNumber = String(context.issue.number);
+              ref = `refs/pull/${prNumber}/head`;
               const pr = await github.rest.pulls.get({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: context.issue.number,
               });
-              ref = pr.data.head.ref;
-              prNumber = String(context.issue.number);
               clientRepo = 'TrustTunnel/TrustTunnelClient';
               tunnelType = 'ag';
             }
