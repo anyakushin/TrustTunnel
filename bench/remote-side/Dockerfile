@@ -18,7 +18,9 @@ RUN mkdir -p ssl && \
       -out ssl/server.crt \
       -subj "/C=US/ST=Test/L=Test/O=Test/CN=$HOSTNAME"
 
-RUN echo "events {\n\
+RUN echo "worker_processes auto;\n\
+\n\
+events {\n\
   worker_connections 4096;\n\
   multi_accept on;\n\
 }\n\
