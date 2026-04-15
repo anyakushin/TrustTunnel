@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       client_repo:
-        description: "Client repo (owner/name), leave empty to skip client build"
+        description: "Client repo (owner/name)"
         required: false
-        default: ""
+        default: "TrustTunnel/TrustTunnelClient"
       client_ref:
         description: "Client branch/ref"
         required: false
@@ -68,7 +68,7 @@ jobs:
             } else if (context.eventName === 'repository_dispatch') {
               const p = context.payload.client_payload || {};
               ref = context.ref;
-              clientRepo = p.client_repo || '';
+              clientRepo = p.client_repo || 'TrustTunnel/TrustTunnelClient';
               clientRef = p.client_ref || 'master';
               prNumber = String(p.pr_number || '');
               tunnelType = 'ag';
@@ -80,6 +80,7 @@ jobs:
               });
               ref = pr.data.head.ref;
               prNumber = String(context.issue.number);
+              clientRepo = 'TrustTunnel/TrustTunnelClient';
               tunnelType = 'ag';
             }
 
@@ -95,7 +96,6 @@ jobs:
           ref: ${{ steps.inputs.outputs.ref }}
 
       - name: Checkout client
-        if: steps.inputs.outputs.client_repo != ''
         uses: actions/checkout@v4
         with:
           repository: ${{ steps.inputs.outputs.client_repo }}
