@@ -62,7 +62,7 @@ jobs:
               tunnelType = '${{ github.event.inputs.tunnel_type }}' || 'ag';
             } else if (context.eventName === 'repository_dispatch') {
               const p = context.payload.client_payload || {};
-              ref = context.ref;
+              ref = p.endpoint_ref || context.ref;
               clientRepo = p.client_repo || 'TrustTunnel/TrustTunnelClient';
               clientRef = p.client_ref || 'master';
               prNumber = String(p.pr_number || '');
