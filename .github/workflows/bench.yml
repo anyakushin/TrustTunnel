@@ -11,10 +11,6 @@ on:
         description: "Client branch/ref"
         required: false
         default: "master"
-      pr_number:
-        description: "PR number for posting results comment"
-        required: false
-        default: ""
       tunnel_type:
         description: "Tunnel type to benchmark"
         required: false
@@ -63,7 +59,6 @@ jobs:
               ref = context.ref;
               clientRepo = '${{ github.event.inputs.client_repo }}';
               clientRef = '${{ github.event.inputs.client_ref }}' || 'master';
-              prNumber = '${{ github.event.inputs.pr_number }}';
               tunnelType = '${{ github.event.inputs.tunnel_type }}' || 'ag';
             } else if (context.eventName === 'repository_dispatch') {
               const p = context.payload.client_payload || {};
