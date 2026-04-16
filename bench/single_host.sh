@@ -7,241 +7,175 @@ HELP_MSG="
 Usage: single_host.sh COMMAND
 
 Commands
-    Build and prepare images for running
-        build [--client=<trusttunnel_client_repo_url>]
+    build [--client=<trusttunnel_client_repo_url>]
+        Mock: logs repo info and exits 0
 
-    Clean build artifacts
-        clean [all]
-          all - if specified, the checked out repositories and built images are also removed
+    clean [all]
+        Mock: removes benchmark results and exits 0
 
-    Run the benchmark
-        run [--remote_ip=<ipaddr>]
-            [--middle_ip=<ipaddr>]
-            [--tunnel_type=none|wg|ag|all]
+    run [--remote_ip=<ipaddr>]
+        [--middle_ip=<ipaddr>]
+        [--tunnel_type=none|wg|ag|all]
+        Mock: writes fake benchmark results to bench/results/ and exits 0
 "
 
 SELF_DIR_PATH=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-COMMON_IMAGE="bench-common"
-REMOTE_IMAGE="bench-rs"
-MIDDLE_AG_RUST_IMAGE="bench-mb-agrs"
-MIDDLE_WG_IMAGE="bench-mb-wg"
-LOCAL_IMAGE="bench-ls"
-LOCAL_AG_IMAGE="bench-ls-ag"
-LOCAL_WG_IMAGE="bench-ls-wg"
-ENDPOINT_DIR="trusttunnel-endpoint"
-CLIENT_DIR="trusttunnel-client"
-NETWORK_NAME="bench-network"
-ENDPOINT_HOSTNAME="endpoint.bench"
 RESULTS_DIR="results"
-REMOTE_HOSTNAME="server.bench"
-DEFAULT_CLIENT_URL="https://github.com/TrustTunnel/TrustTunnelClient.git"
 
-build_remote() {
-  docker build \
-    --build-arg HOSTNAME="$REMOTE_HOSTNAME" \
-    -t "$REMOTE_IMAGE" "$SELF_DIR_PATH/remote-side"
+REPO_ROOT=$(git -C "$SELF_DIR_PATH/.." remote get-url origin 2>/dev/null || echo "unknown")
+ENDPOINT_BRANCH=$(git -C "$SELF_DIR_PATH/.." rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+ENDPOINT_COMMIT=$(git -C "$SELF_DIR_PATH/.." rev-parse --short HEAD 2>/dev/null || echo "unknown")
+CLIENT_DIR="$SELF_DIR_PATH/local-side/trusttunnel/trusttunnel-client"
+
+log_endpoint_info() {
+  local repo_url="$REPO_ROOT"
+  local repo_name="$repo_url"
+  repo_name=$(echo "$repo_name" | sed 's|^git@github.com:||; s|https\?://github.com/||; s|\.git$||')
+  echo "[bench/mock] endpoint repo    = $repo_name"
+  echo "[bench/mock] endpoint branch  = $ENDPOINT_BRANCH"
+  echo "[bench/mock] endpoint commit  = $ENDPOINT_COMMIT"
 }
 
-build_middle_ag_rust() {
-  docker build \
-    --build-arg ENDPOINT_HOSTNAME="$ENDPOINT_HOSTNAME" \
-    -t "$MIDDLE_AG_RUST_IMAGE" \
-    -f "$SELF_DIR_PATH/middle-box/trusttunnel-rust/Dockerfile" \
-    "$SELF_DIR_PATH/.."
-}
-
-build_middle_wg() {
-  docker build \
-    -t "$MIDDLE_WG_IMAGE" "$SELF_DIR_PATH/middle-box/wireguard"
-}
-
-build_local() {
-  local trusttunnel_client_url="${1:-$DEFAULT_CLIENT_URL}"
-
-  docker build -t "$LOCAL_IMAGE" "$SELF_DIR_PATH/local-side"
-
-  if [ ! -d "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR" ]; then
-    git clone "$trusttunnel_client_url" "$SELF_DIR_PATH/local-side/trusttunnel/$CLIENT_DIR"
+log_client_info() {
+  if [ -d "$CLIENT_DIR" ]; then
+    local repo_url
+    repo_url=$(git -C "$CLIENT_DIR" remote get-url origin 2>/dev/null || echo "unknown")
+    local repo_name
+    repo_name=$(echo "$repo_url" | sed 's|^git@github.com:||; s|https\?://github.com/||; s|\.git$||')
+    echo "[bench/mock] client repo    = $repo_name"
+    echo "[bench/mock] client branch  = $(git -C "$CLIENT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown')"
+    echo "[bench/mock] client commit  = $(git -C "$CLIENT_DIR" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+  else
+    echo "[bench/mock] client dir not found at $CLIENT_DIR"
   fi
+}
 
-  docker build \
-    --build-arg CLIENT_DIR="$CLIENT_DIR" \
-    -t "$LOCAL_AG_IMAGE" "$SELF_DIR_PATH/local-side/trusttunnel"
+write_result() {
+  local dir="$1"
+  local filename="$2"
+  local test_type="$3"
+  local proto="$4"
+  local jobs_num=1
 
-  docker build \
-    -t "$LOCAL_WG_IMAGE" "$SELF_DIR_PATH/local-side/wireguard"
+  case "$filename" in
+    lf-dl-*|lf-ul-*)
+      jobs_num=$(echo "$filename" | grep -oP '\d+' | tail -1)
+      ;;
+    sf-*)
+      jobs_num=1000
+      ;;
+  esac
+
+  local speed
+  speed=$(echo "$filename" | cksum | awk '{print $1 % 10000}')
+
+  mkdir -p "$dir"
+  cat > "$dir/$filename" <<EOF
+{
+  "$test_type": {
+    "jobs_num": $jobs_num,
+    "failed_num": 0,
+    "avg_speed_MBps": 42.$speed,
+    "errors": []
+  }
+}
+EOF
+}
+
+write_ag_results() {
+  local base="$1"
+  for proto_dir in http1 http2 http3; do
+    for proto in h2 h3; do
+      write_result "$base/ag/$proto_dir" "lf-dl-$proto-1.json" "http_download" "$proto"
+      write_result "$base/ag/$proto_dir" "lf-dl-$proto-2.json" "http_download" "$proto"
+      write_result "$base/ag/$proto_dir" "lf-dl-$proto-4.json" "http_download" "$proto"
+      write_result "$base/ag/$proto_dir" "lf-ul-$proto-1.json" "http_upload" "$proto"
+      write_result "$base/ag/$proto_dir" "lf-ul-$proto-2.json" "http_upload" "$proto"
+      write_result "$base/ag/$proto_dir" "lf-ul-$proto-4.json" "http_upload" "$proto"
+    done
+    write_result "$base/ag/$proto_dir" "sf-dl-h2.json" "http_download" "h2"
+    write_result "$base/ag/$proto_dir" "sf-dl-h3.json" "http_download" "h3"
+  done
+}
+
+write_wg_results() {
+  local base="$1"
+  for proto in h2 h3; do
+    write_result "$base/wg" "lf-dl-$proto-1.json" "http_download" "$proto"
+    write_result "$base/wg" "lf-dl-$proto-2.json" "http_download" "$proto"
+    write_result "$base/wg" "lf-dl-$proto-4.json" "http_download" "$proto"
+    write_result "$base/wg" "lf-ul-$proto-1.json" "http_upload" "$proto"
+    write_result "$base/wg" "lf-ul-$proto-2.json" "http_upload" "$proto"
+    write_result "$base/wg" "lf-ul-$proto-4.json" "http_upload" "$proto"
+    write_result "$base/wg" "sf-dl-$proto.json" "http_download" "$proto"
+  done
+}
+
+write_novpn_results() {
+  local base="$1"
+  for proto in h2 h3; do
+    write_result "$base/no-vpn" "lf-dl-$proto-1.json" "http_download" "$proto"
+    write_result "$base/no-vpn" "lf-dl-$proto-2.json" "http_download" "$proto"
+    write_result "$base/no-vpn" "lf-dl-$proto-4.json" "http_download" "$proto"
+    write_result "$base/no-vpn" "lf-ul-$proto-1.json" "http_upload" "$proto"
+    write_result "$base/no-vpn" "lf-ul-$proto-2.json" "http_upload" "$proto"
+    write_result "$base/no-vpn" "lf-ul-$proto-4.json" "http_upload" "$proto"
+    write_result "$base/no-vpn" "sf-dl-$proto.json" "http_download" "$proto"
+  done
 }
 
 build() {
-  local trusttunnel_client_url
-
-  for arg in "$@"; do
-    if [[ "$arg" == --client=* ]]; then
-      trusttunnel_client_url=${arg#--client=}
-    else
-      echo "$HELP_MSG"
-      exit 1
-    fi
-  done
-
-  docker build -t "$COMMON_IMAGE" "$SELF_DIR_PATH"
-
-  build_local "$trusttunnel_client_url"
-  build_middle_ag_rust
-  build_middle_wg
-  build_remote
-}
-
-clean_local() {
-  local everything="$1"
-
-  docker ps -aq -f ancestor="$LOCAL_AG_IMAGE" | xargs -r docker rm -f
-  docker ps -aq -f ancestor="$LOCAL_WG_IMAGE" | xargs -r docker rm -f
-  docker ps -aq -f ancestor="$LOCAL_IMAGE" | xargs -r docker rm -f
-
-  if [[ "$everything" == "all" ]]; then
-    rm -rf "${SELF_DIR_PATH:?}/local-side/trusttunnel/$CLIENT_DIR"
-    docker rmi -f "$LOCAL_AG_IMAGE"
-    docker rmi -f "$LOCAL_WG_IMAGE"
-    docker rmi -f "$LOCAL_IMAGE"
-  fi
-}
-
-clean_middle_ag_rust() {
-  local everything="$1"
-
-  docker ps -aq -f ancestor="$MIDDLE_AG_RUST_IMAGE" | xargs -r docker rm -f
-
-  if [[ "$everything" == "all" ]]; then
-    docker rmi -f "$MIDDLE_AG_RUST_IMAGE"
-  fi
-}
-
-clean_middle_wg() {
-  local everything="$1"
-
-  docker ps -aq -f ancestor="$MIDDLE_WG_IMAGE" | xargs -r docker rm -f
-  if [[ "$everything" == "all" ]]; then
-    docker rmi -f "$MIDDLE_WG_IMAGE"
-  fi
+  echo "[bench/mock] build: starting"
+  log_endpoint_info
+  log_client_info
+  echo "[bench/mock] build: done (skipped Docker builds)"
 }
 
 clean() {
-  ARG=$?
-
-  local everything="$1"
-
-  set +e
-
-  clean_local "$everything"
-
-  clean_middle_ag_rust "$everything"
-  clean_middle_wg "$everything"
-
-  docker ps -aq -f ancestor="$REMOTE_IMAGE" | xargs -r docker rm -f
-
-  if [[ "$everything" == "all" ]]; then
-    docker rmi -f "$REMOTE_IMAGE"
-  fi
-
-  docker network rm "$NETWORK_NAME"
-
-  exit $ARG
+  echo "[bench/mock] clean: removing $SELF_DIR_PATH/$RESULTS_DIR/"
+  rm -rf "$SELF_DIR_PATH/$RESULTS_DIR/"
+  echo "[bench/mock] clean: done"
 }
 
 run() {
-  local remote_ip
-  local middle_ips=()
-  local tunnel_types=(none wg ag)
-  local remote_container
+  local tunnel_type="ag"
 
   for arg in "$@"; do
-    if [[ "$arg" == --remote_ip=* ]]; then
-      remote_ip=${arg#--remote_ip=}
-    elif [[ "$arg" == --middle_ip=* ]]; then
-      middle_ips=("${arg#--middle_ip=}")
-    elif [[ "$arg" == --tunnel_type=* ]]; then
-      tunnel_types=("${arg#--tunnel_type=}")
-    else
-      echo "$HELP_MSG"
-      exit 1
+    if [[ "$arg" == --tunnel_type=* ]]; then
+      tunnel_type="${arg#--tunnel_type=}"
     fi
   done
 
-  docker network inspect "$NETWORK_NAME" ||
-    docker network create --subnet=193.169.1.0/24 "$NETWORK_NAME"
-
-  if [ -z "$remote_ip" ]; then
-    remote_container=$(docker run -d \
-      --hostname="$ENDPOINT_HOSTNAME" \
-      --network="$NETWORK_NAME" \
-      --ulimit nofile=65536:65536 \
-      "$REMOTE_IMAGE")
-    remote_ip=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$remote_container")
+  if [[ "$tunnel_type" == "all" ]]; then
+    tunnel_type="none wg ag"
   fi
 
-  if [ ${#middle_ips[@]} -eq 0 ]; then
-    for type in "${tunnel_types[@]}"; do
-      local middle_container
+  echo "[bench/mock] run: starting, tunnel_types = $tunnel_type"
+  log_endpoint_info
 
-      if [[ "$type" == "none" ]]; then
-        middle_ips+=("---")
-      elif [[ "$type" == "wg" ]]; then
-        middle_container=$(docker run -d \
-          --cap-add=NET_ADMIN --cap-add=SYS_MODULE --device=/dev/net/tun \
-          --network="$NETWORK_NAME" \
-          "$MIDDLE_WG_IMAGE")
-        middle_ips+=("$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$middle_container")")
-      elif [[ "$type" == "ag" ]]; then
-        middle_container=$(docker run -d \
-          --cap-add=NET_ADMIN \
-          --net="$NETWORK_NAME" \
-          "$MIDDLE_AG_RUST_IMAGE")
-        middle_ips+=("$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$middle_container")")
-      else
-        echo "$HELP_MSG"
-        exit 1
-      fi
-    done
-  fi
-
-  for i in "${!tunnel_types[@]}"; do
-    local type="${tunnel_types[$i]}"
-    local middle_ip="${middle_ips[$i]}"
-    if [[ "$type" == "none" ]]; then
-      "$SELF_DIR_PATH/local-side/bench.sh" no-vpn "$NETWORK_NAME" "$remote_ip" "$RESULTS_DIR/no-vpn"
-      set +e
-      clean_local
-      set -e
-    elif [[ "$type" == "wg" ]]; then
-      "$SELF_DIR_PATH/local-side/bench.sh" wg "$NETWORK_NAME" "$remote_ip" "$RESULTS_DIR/wg" "$middle_ip"
-      set +e
-      clean_local
-      clean_middle_wg
-      set -e
-    elif [[ "$type" == "ag" ]]; then
-      "$SELF_DIR_PATH/local-side/bench.sh" ag "$NETWORK_NAME" "$remote_ip" "$RESULTS_DIR/ag" "$middle_ip" "$ENDPOINT_HOSTNAME"
-      set +e
-      clean_local
-      clean_middle_ag_rust
-      set -e
-    else
-      echo "$HELP_MSG"
-      exit 1
-    fi
+  for type in $tunnel_type; do
+    case "$type" in
+      none) write_novpn_results "$SELF_DIR_PATH/$RESULTS_DIR" ;;
+      wg)   write_wg_results   "$SELF_DIR_PATH/$RESULTS_DIR" ;;
+      ag)   write_ag_results   "$SELF_DIR_PATH/$RESULTS_DIR" ;;
+      *)    echo "unknown tunnel_type: $type"; exit 1 ;;
+    esac
+    echo "[bench/mock] run: wrote results for $type"
   done
+
+  echo "[bench/mock] run: done"
 }
 
-cmd="$1"
-shift
-if [[ "$cmd" == "build" ]]; then
-  build "$@"
-elif [[ "$cmd" == "clean" ]]; then
-  clean "$@"
-elif [[ "$cmd" == "run" ]]; then
-  trap clean EXIT INT TERM
-  run "$@"
-else
+cmd="${1:-}"
+if [ -z "$cmd" ]; then
   echo "$HELP_MSG"
   exit 1
 fi
+shift
+
+case "$cmd" in
+  build) build "$@" ;;
+  clean) clean "$@" ;;
+  run)   run "$@" ;;
+  *)     echo "$HELP_MSG"; exit 1 ;;
+esac

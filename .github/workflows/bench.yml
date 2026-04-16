@@ -62,11 +62,13 @@ jobs:
               tunnelType = '${{ github.event.inputs.tunnel_type }}' || 'ag';
             } else if (context.eventName === 'repository_dispatch') {
               const p = context.payload.client_payload || {};
+              console.log('Payload received:', JSON.stringify(p, null, 2));
               ref = p.endpoint_ref || context.ref;
               clientRepo = p.client_repo || 'TrustTunnel/TrustTunnelClient';
               clientRef = p.client_ref || 'master';
               prNumber = String(p.pr_number || '');
               tunnelType = 'ag';
+              console.log('Resolved ref:', ref);
             } else if (context.eventName === 'issue_comment') {
               prNumber = String(context.issue.number);
               ref = `refs/pull/${prNumber}/head`;
