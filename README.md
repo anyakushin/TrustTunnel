@@ -471,6 +471,8 @@ Available on [App Store][app-store]* and [Play Store][play-store].
 
 ## Roadmap
 
+Be the best!
+
 While our VPN currently supports tunneling TCP/UDP/ICMP traffic, we plan to add support for
 peer-to-peer communication between clients.
 
